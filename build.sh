@@ -1,8 +1,8 @@
 #!/bin/bash
 
-set -e
+set -ex
 
-VERSION="v3.14.1"
+VERSION="v4.2.2"
 
 usage() { echo "Usage: $0 -a <arm|aarch64> [-v]" 1>&2; exit 1; }
 
@@ -45,10 +45,8 @@ build_resource_type() {
 			[[ -e $patch ]] || break
 			git apply < "$patch"
 		done
-
 		cp "$base/qemu-$arch-static-3.0.0" .
-
-		docker build -t "$name-resource" .
+		docker build --build-arg https_proxy=$http_proxy --build-arg http_proxy=$http_proxy -t "$name-resource" .
 		container_id=$(docker create "$name-resource")
 		docker export "$container_id" | gzip > "$workdir/resources/$name-resource-deadbeef.tar.gz"
 		docker rm "$container_id"
@@ -70,9 +68,9 @@ pushd "$workdir"
 	# get garden-runc
 	garden_tag="v1.16.2"
 	[ -d "garden-runc-release" ] || git clone --branch "$garden_tag" --recursive 'https://github.com/cloudfoundry/garden-runc-release'
-	find garden-runc-release -path '*/vendor/golang.org/x/net/trace' -print0 | xargs -0 --no-run-if-empty -n1 rm -r
 	pushd ./garden-runc-release/src/code.cloudfoundry.org/guardian
 		git reset --hard
+	        find . -path '*/vendor/golang.org/x/net/trace' -print0 | xargs -0 --no-run-if-empty -n1 rm -r
 		for patch in "$base/patches/$arch/guardian/"*; do
 			[[ -e $patch ]] || break
 			git apply < "$patch"
@@ -107,7 +105,7 @@ pushd "$workdir"
 			[[ -e $patch ]] || break
 			git apply < "$patch"
 		done
-		docker build -t concourse-bin .
+		docker build --build-arg http_proxy=$http_proxy --build-arg https_proxy=$http_proxy -t concourse-bin .
 	popd
 
 	mkdir -p binary
@@ -116,6 +114,8 @@ pushd "$workdir"
 		-w "$PWD" \
 		--rm \
 		--entrypoint="qemu-$arch-static" \
+		-e http_proxy=$http_proxy \
+		-e https_proxy=$http_proxy \
 		-e QEMU_EXECVE=1 \
 		concourse-bin /bin/bash ./concourse/src/github.com/concourse/bin/ci/build-linux
 	rm -rf "$base/output"
